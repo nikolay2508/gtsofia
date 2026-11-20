@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 const { createDataContext } = require('../api/virtual-board-service');
+const { getRouteMetadata } = require('../assets/js/route-metadata');
+const routesData = require('../data/routes.json');
+const directionsData = require('../data/directions.json');
 
 const now = new Date('2026-11-20T08:00:00+02:00');
 const epoch = value => Date.parse(`2026-11-20T${value}+02:00`) / 1000;
@@ -9,6 +12,8 @@ const fixture = {
     { route_id: 'BUS11', route_short_name: '11', route_type: '3', route_color: 'BE1E2D', route_text_color: 'FFFFFF' },
     { route_id: 'TRAM1', route_short_name: '1', route_type: '0', route_color: 'F7941D', route_text_color: 'FFFFFF' },
     { route_id: 'TROLLEY6', route_short_name: '6', route_type: '11', route_color: '27AAE1', route_text_color: 'FFFFFF' },
+    { route_id: 'BUS60', route_short_name: '60', route_type: '11', route_color: '27AAE1', route_text_color: 'FFFFFF' },
+    { route_id: 'E186', route_short_name: 'E186', route_type: '11', route_color: '27AAE1', route_text_color: 'FFFFFF' },
     { route_id: 'METRO1', route_short_name: 'M1', route_type: '1', route_color: '1C75BC', route_text_color: 'FFFFFF' }
   ],
   directions: {
@@ -55,6 +60,28 @@ const fixture = {
         stops: [{ stop_id: '0300', osm_name: 'Тролейбусна начална' }, { stop_id: '0301', osm_name: 'Тролейбусен OSM край' }]
       }
     },
+    BUS60: {
+      D1: {
+        key: 'D1', direction_id: '0', headsign: 'Пълна крайна спирка 60', destination: 'Пълна крайна спирка 60',
+        pattern: ['0400', '0401', '0402', '0403'],
+        stops: [
+          { stop_id: '0400', osm_name: 'Начална спирка 60' },
+          { stop_id: '0401', osm_name: 'Междинна спирка 60' },
+          { stop_id: '0402', osm_name: 'Частична крайна спирка 60' },
+          { stop_id: '0403', osm_name: 'Пълна крайна спирка 60' }
+        ]
+      }
+    },
+    E186: {
+      D1: {
+        key: 'D1', direction_id: '0', headsign: 'Крайна спирка 186', destination: 'Крайна спирка 186',
+        pattern: ['0500', '0501'],
+        stops: [
+          { stop_id: '0500', osm_name: 'Начална спирка 186' },
+          { stop_id: '0501', osm_name: 'Крайна спирка 186' }
+        ]
+      }
+    },
     METRO1: {
       D1: {
         key: 'D1', direction_id: '0', headsign: 'Метростанция Б', destination: 'Метростанция Б',
@@ -92,6 +119,8 @@ const fixture = {
       original_trip_id: 'TROLLEY6-TRIP', service_id: 'SERVICE', start_time: '08:10:00',
       times: ['08:10:00', '08:18:00']
     }], weekend: [] } },
+    BUS60: { D1: { weekday: [], weekend: [] } },
+    E186: { D1: { weekday: [], weekend: [] } },
     METRO1: { D1: { weekday: [{
       original_trip_id: 'METRO1-TRIP', service_id: 'SERVICE', start_time: '08:10:00',
       times: ['08:10:00', '08:18:00']
@@ -108,6 +137,12 @@ const fixture = {
     { stop_id: '0201', stop_code: '0201', stop_name: 'Трамваен край', osm_stop_name: 'Трамваен OSM край', stop_name_source: 'osm' },
     { stop_id: '0300', stop_code: '0300', stop_name: 'Тролейбусна начална', osm_stop_name: 'Тролейбусна начална', stop_name_source: 'osm' },
     { stop_id: '0301', stop_code: '0301', stop_name: 'Тролейбусен край', osm_stop_name: 'Тролейбусен OSM край', stop_name_source: 'osm' },
+    { stop_id: '0400', stop_code: '0400', stop_name: 'Начална спирка 60', osm_stop_name: 'Начална спирка 60', stop_name_source: 'osm' },
+    { stop_id: '0401', stop_code: '0401', stop_name: 'Междинна спирка 60', osm_stop_name: 'Междинна спирка 60', stop_name_source: 'osm' },
+    { stop_id: '0402', stop_code: '0402', stop_name: 'Частична крайна спирка 60', osm_stop_name: 'Частична крайна спирка 60', stop_name_source: 'osm' },
+    { stop_id: '0403', stop_code: '0403', stop_name: 'Пълна крайна спирка 60', osm_stop_name: 'Пълна крайна спирка 60', stop_name_source: 'osm' },
+    { stop_id: '0500', stop_code: '0500', stop_name: 'Начална спирка 186', osm_stop_name: 'Начална спирка 186', stop_name_source: 'osm' },
+    { stop_id: '0501', stop_code: '0501', stop_name: 'Крайна спирка 186', osm_stop_name: 'Крайна спирка 186', stop_name_source: 'osm' },
     { stop_id: 'M1', stop_code: '1', stop_name: 'Метростанция А', osm_stop_name: 'Метростанция А', stop_name_source: 'osm' },
     { stop_id: 'M2', stop_code: '2', stop_name: 'Метростанция Б', osm_stop_name: 'Метростанция Б OSM', stop_name_source: 'osm' }
   ],
@@ -156,6 +191,19 @@ assert.ok(fallbackBusRows.some(route => route.terminal_stop_id === '0102' && rou
 assert.ok(fallbackBusRows.some(route => route.terminal_stop_id === '0101' && route.destination === 'Междинна спирка'));
 assert.ok(fallbackBusRows.every(route => route.times[0].scheduled === true));
 
+// A timetable course must not be listed at its own actual terminal. This
+// includes short-turn courses whose final populated stop_time is intermediate
+// in the full route pattern.
+const fallbackAtShortTurnTerminal = service.buildBoard([], '0101', now);
+assert.ok(
+  !fallbackAtShortTurnTerminal.routes.some(route => route.route_id === 'BUS11' && route.terminal_stop_id === '0101'),
+  'the short-turn fallback course should be hidden at its own terminal stop'
+);
+assert.ok(
+  fallbackAtShortTurnTerminal.routes.some(route => route.route_id === 'BUS11' && route.terminal_stop_id === '0102'),
+  'the full course should remain visible at the same stop when it continues beyond it'
+);
+
 // API transport type mapping is based on the source's IDs: 2=tram, 4=trolley.
 const tramRealtime = service.buildBoard([{
   type: 2,
@@ -172,6 +220,70 @@ const trolleyRealtime = service.buildBoard([{
   details: [{ t: 5 }]
 }], '0300', now);
 assert.ok(trolleyRealtime.routes.some(route => route.route_id === 'TROLLEY6' && route.realtime));
+
+// GTFS route_type=11 can still be displayed as a bus by GTSofia's shared
+// route-metadata rules. The ЦГМ API reports these rows as type=1 (bus), so
+// realtime matching must use the normalized public type rather than raw GTFS.
+const replacementBusRealtime = service.buildBoard([{
+  type: 1,
+  name: '60',
+  route_name: 'Начална спирка 60 - Частична крайна спирка 60',
+  details: [{ t: 6 }]
+}], '0400', now);
+const replacementBusRow = replacementBusRealtime.routes.find(route => route.route_id === 'BUS60' && route.realtime);
+assert.ok(replacementBusRow, 'a GTFS trolleybus record classified as a bus must match a ЦГМ bus realtime row');
+assert.equal(replacementBusRow.terminal_stop_id, '0402', 'realtime should resolve the actual partial-course terminal, not the full route terminal');
+assert.equal(replacementBusRow.destination, 'Частична крайна спирка 60', 'partial-course destination should use its OSM stop name');
+
+const realtimeAtPartialTerminal = service.buildBoard([{
+  type: 1,
+  name: '60',
+  route_name: 'Начална спирка 60 - Частична крайна спирка 60',
+  details: [{ t: 6 }]
+}], '0402', now);
+assert.ok(
+  !realtimeAtPartialTerminal.routes.some(route => route.route_id === 'BUS60' && route.realtime),
+  'a realtime partial-course arrival must be hidden when the selected stop is that course terminal'
+);
+
+// The E-prefix normalization used for display (E186 -> 186) must also be used
+// for realtime line matching.
+const e186Realtime = service.buildBoard([{
+  type: 1,
+  name: '186',
+  route_name: 'Начална спирка 186 - Крайна спирка 186',
+  details: [{ t: 7 }]
+}], '0500', now);
+assert.ok(e186Realtime.routes.some(route => route.route_id === 'E186' && route.realtime), 'ЦГМ line 186 must match the GTFS route ref E186');
+
+// Regression coverage against the current GTFS snapshot: these routes are
+// raw GTFS trolleybus types but are public/display bus services in GTSofia.
+const liveService = createDataContext();
+for (const routeId of ['TB35', 'TB39', 'TB36', 'TB24', 'TB46', 'TB43', 'TB41']) {
+  const route = routesData.find(item => item.route_id === routeId);
+  assert.ok(route, `expected GTFS route ${routeId} to exist`);
+  const metadata = getRouteMetadata(route);
+  const directionEntry = Object.entries(directionsData[routeId] || {})[0];
+  assert.ok(directionEntry, `expected GTFS direction for ${routeId}`);
+  const [directionKey, direction] = directionEntry;
+  const pattern = direction.pattern || [];
+  const originStopId = String(pattern[0] || '');
+  const terminalStopId = String(pattern[pattern.length - 1] || '');
+  const origin = direction.stops?.find(stop => String(stop.stop_id) === originStopId);
+  const terminal = direction.stops?.find(stop => String(stop.stop_id) === terminalStopId);
+  assert.ok(origin?.osm_name && terminal?.osm_name, `expected OSM origin and terminal aliases for ${routeId}`);
+
+  const board = liveService.buildBoard([{
+    type: 1,
+    name: metadata.number,
+    route_name: `${origin.osm_name} - ${terminal.osm_name}`,
+    details: [{ t: 5 }]
+  }], originStopId, now);
+  assert.ok(
+    board.routes.some(item => item.route_id === routeId && item.direction_key === directionKey && item.realtime),
+    `${metadata.number} should resolve realtime as a bus even though its raw GTFS route_type is 11`
+  );
+}
 
 // Metro never consumes the surface realtime source, even if a row is passed in.
 const metroBoard = service.buildBoard([{

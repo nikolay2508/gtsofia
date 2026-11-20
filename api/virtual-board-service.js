@@ -11,16 +11,17 @@ const MAX_ARRIVALS_PER_LINE = 3;
 const MAX_STATIC_LOOKAHEAD_SECONDS = 2 * 60 * 60;
 const MAX_REALTIME_LOOKAHEAD_SECONDS = 2 * 60 * 60;
 
-// Values are the new line-type IDs used by sofiaTraffic.bg's virtual-table
-// response. They are mapped to the GTFS route_type codes used by GTSofia.
+// Values are the line-type IDs returned by ЦГМ's virtual-table endpoint.
+// Match them against GTSofia's already-normalized public transport types, not
+// the raw GTFS route_type: some GTFS trolleybus records (e.g. 60, 73, 74,
+// 123, 186, 288 and 801) are intentionally displayed as replacement buses.
 // The Android client maps 1 -> bus, 2 -> tram and 4 -> trolleybus.
-const API_TYPE_TO_GTFS_TYPES = Object.freeze({
-  '1': ['3'],
-  '2': ['0'],
-  '4': ['11'],
-  // Night buses use the bus route family in GTFS and are still identified by
-  // their N-prefixed line names.
-  '5': ['3']
+const API_TYPE_TO_DISPLAY_TYPES = Object.freeze({
+  '1': 'bus',
+  '2': 'tram',
+  '4': 'trolley',
+  // Retain compatibility with night-bus rows if ЦГМ supplies this type.
+  '5': 'bus'
 });
 
 function normalizeStopKey(value) {
@@ -51,11 +52,16 @@ function normalizeDirectionText(value) {
 // hyphens are ignored, Latin TM is equivalent to Cyrillic ТМ, and Latin E is
 // equivalent to Cyrillic Е. A terminal Т is deliberately NOT expanded to ТМ.
 function normalizeApiLineName(value) {
+  // Match the Android Line.equals() rules: ignore hyphens, unify Latin TM/E
+  // with Cyrillic spellings, but keep a terminal T distinct from TM. The
+  // leading E in refs such as E186 is a legacy display prefix and is omitted
+  // from the public number returned by the virtual-table API.
   return String(value ?? '')
     .trim()
     .toLocaleUpperCase('bg-BG')
     .replace(/\s+/g, '')
     .replace(/-/g, '')
+    .replace(/^[ЕE](?=\d)/, '')
     .replace(/TM/g, 'ТМ')
     .replace(/E/g, 'Е');
 }
@@ -239,15 +245,17 @@ function createDataContext(data = {}) {
     }
   }
 
-  // Build a lookup from the public line number and ЦГМ transport type to the
-  // corresponding GTFS route records.
+  // Index routes by the same normalized type and public number shown by the
+  // website. Do not key this index by raw GTFS route_type: route-metadata.js
+  // intentionally reclassifies several GTFS trolleybus records as buses.
   const routesByApiLine = new Map();
   for (const route of routes) {
+    const meta = createRouteMetadata(route);
     const apiLineName = normalizeApiLineName(route?.route_short_name);
-    const routeType = String(route?.route_type ?? '').trim();
-    if (!apiLineName) continue;
+    const displayType = String(meta?.type || '').trim();
+    if (!apiLineName || !displayType || displayType === 'other') continue;
 
-    const key = `${routeType}|${apiLineName}`;
+    const key = `${displayType}|${apiLineName}`;
     if (!routesByApiLine.has(key)) routesByApiLine.set(key, []);
     routesByApiLine.get(key).push(route);
   }
@@ -294,42 +302,32 @@ function createDataContext(data = {}) {
     ).trim();
   }
 
-  function getDirectionDestinationAliases(direction, terminalStopId) {
-    const aliases = [direction?.headsign, direction?.destination];
-    const terminalStop = getStop(terminalStopId);
-    aliases.push(
-      terminalStop?.osm_stop_name,
-      terminalStop?.stop_name,
-      terminalStop?.gtfs_stop_name
-    );
-
+  function getStopNameAliases(
+    stopId,
+    direction,
+    { includeOriginLabels = false, includeDestinationLabels = false } = {}
+  ) {
+    const stop = getStop(stopId);
     const directionStops = Array.isArray(direction?.stops) ? direction.stops : [];
-    const directionTerminal = directionStops.find(item => stopIdsMatch(item?.stop_id, terminalStopId));
-    if (directionTerminal) {
-      aliases.push(directionTerminal.osm_name, directionTerminal.name, directionTerminal.gtfs_name);
-    }
-
-    return new Set(aliases.map(normalizeDirectionText).filter(Boolean));
-  }
-
-  function getDirectionOriginAliases(direction) {
-    const pattern = Array.isArray(direction?.pattern) ? direction.pattern : [];
-    const originStopId = String(pattern[0] || '').trim();
-    const originStop = getStop(originStopId);
+    const directionStop = directionStops.find(item => stopIdsMatch(item?.stop_id, stopId));
     const aliases = [
-      direction?.origin,
-      direction?.origin_name,
-      direction?.start,
-      direction?.from,
-      originStop?.osm_stop_name,
-      originStop?.stop_name,
-      originStop?.gtfs_stop_name
+      stop?.osm_stop_name,
+      stop?.osm_name,
+      stop?.stop_name,
+      stop?.gtfs_stop_name,
+      directionStop?.osm_name,
+      directionStop?.name,
+      directionStop?.gtfs_name
     ];
 
-    const directionStops = Array.isArray(direction?.stops) ? direction.stops : [];
-    const directionOrigin = directionStops.find(item => stopIdsMatch(item?.stop_id, originStopId));
-    if (directionOrigin) {
-      aliases.push(directionOrigin.osm_name, directionOrigin.name, directionOrigin.gtfs_name);
+    // Route labels describe only the relevant full-route endpoint. Do not
+    // treat them as aliases for every intermediate stop: that could make a
+    // partial-course route_name resolve to the wrong physical terminal.
+    if (includeOriginLabels) {
+      aliases.push(direction?.origin, direction?.origin_name, direction?.start, direction?.from);
+    }
+    if (includeDestinationLabels) {
+      aliases.push(direction?.headsign, direction?.destination);
     }
 
     return new Set(aliases.map(normalizeDirectionText).filter(Boolean));
@@ -337,13 +335,14 @@ function createDataContext(data = {}) {
 
   function resolveRealtimeDirections(apiRow, selectedStopId) {
     const apiType = String(apiRow?.type ?? '').trim();
-    const gtfsTypes = API_TYPE_TO_GTFS_TYPES[apiType];
+    const displayType = API_TYPE_TO_DISPLAY_TYPES[apiType];
     const lineName = normalizeApiLineName(apiRow?.name);
     const routeNamePairs = getRouteNamePairs(apiRow?.route_name);
-    if (!gtfsTypes || !lineName) return [];
+    if (!displayType || !lineName) return [];
 
-    const routeCandidates = gtfsTypes.flatMap(routeType => routesByApiLine.get(`${routeType}|${lineName}`) || []);
+    const routeCandidates = routesByApiLine.get(`${displayType}|${lineName}`) || [];
     const possibleDirections = [];
+    const destinationMatches = [];
 
     for (const route of routeCandidates) {
       const routeId = String(route?.route_id || '').trim();
@@ -351,60 +350,114 @@ function createDataContext(data = {}) {
 
       for (const [directionKey, direction] of Object.entries(directions?.[routeId] || {})) {
         const pattern = Array.isArray(direction?.pattern) ? direction.pattern.map(String) : [];
-        if (!pattern.some(stopId => stopIdsMatch(stopId, selectedStopId))) continue;
+        const selectedIndexes = [];
+        for (let index = 0; index < pattern.length; index++) {
+          if (stopIdsMatch(pattern[index], selectedStopId)) selectedIndexes.push(index);
+        }
+        if (!selectedIndexes.length) continue;
 
-        const terminalStopId = String(pattern[pattern.length - 1] || '').trim();
-        if (!terminalStopId) continue;
-
-        const destinationAliases = getDirectionDestinationAliases(direction, terminalStopId);
-        const originAliases = getDirectionOriginAliases(direction);
-        const matchingPairs = routeNamePairs.filter(pair =>
-          destinationAliases.has(normalizeDirectionText(pair.destination))
-        );
-        const originMatch = matchingPairs.some(pair =>
-          pair.origin && originAliases.has(normalizeDirectionText(pair.origin))
-        );
-
-        possibleDirections.push({
+        const routeCandidate = {
           route,
           routeId,
           directionKey,
           direction: { key: directionKey, ...direction },
-          terminalStopId,
-          meta: createRouteMetadata(route),
-          destinationMatch: matchingPairs.length > 0,
-          originMatch
-        });
+          pattern,
+          meta: createRouteMetadata(route)
+        };
+        possibleDirections.push(routeCandidate);
+
+        // A ЦГМ route_name can describe a partial course. Its destination may
+        // therefore be any stop at or after the selected stop in the GTFS
+        // direction, not only the last stop of the full route pattern.
+        for (const selectedIndex of selectedIndexes) {
+          for (const pair of routeNamePairs) {
+            const destinationName = normalizeDirectionText(pair.destination);
+            if (!destinationName) continue;
+
+            let originMatch = false;
+            const originName = normalizeDirectionText(pair.origin);
+            if (originName) {
+              for (let originIndex = 0; originIndex <= selectedIndex; originIndex++) {
+                const originAliases = getStopNameAliases(
+                  pattern[originIndex],
+                  direction,
+                  { includeOriginLabels: originIndex === 0 }
+                );
+                if (originAliases.has(originName)) {
+                  originMatch = true;
+                  break;
+                }
+              }
+            }
+
+            for (let terminalIndex = selectedIndex; terminalIndex < pattern.length; terminalIndex++) {
+              const terminalStopId = String(pattern[terminalIndex] || '').trim();
+              if (!terminalStopId) continue;
+
+              const destinationAliases = getStopNameAliases(
+                terminalStopId,
+                direction,
+                { includeDestinationLabels: terminalIndex === pattern.length - 1 }
+              );
+              if (!destinationAliases.has(destinationName)) continue;
+
+              destinationMatches.push({
+                ...routeCandidate,
+                terminalStopId,
+                terminalIndex,
+                fullTerminalMatch: terminalIndex === pattern.length - 1,
+                destinationMatch: true,
+                originMatch
+              });
+            }
+          }
+        }
       }
     }
 
     if (!possibleDirections.length) return [];
 
-    // When the source omits or slightly varies the terminal spelling, retain
-    // the previous safe fallback only if the line + type + selected stop map
-    // to a single GTFS direction.
-    const destinationMatches = possibleDirections.filter(candidate => candidate.destinationMatch);
+    // If ЦГМ's destination label is absent or differs from every GTFS/OSM stop
+    // alias, keep the former conservative fallback only when the stop + line
+    // + transport type identify a single GTFS direction unambiguously.
     if (!destinationMatches.length) {
-      return possibleDirections.length === 1 ? possibleDirections : [];
+      if (possibleDirections.length !== 1) return [];
+      const only = possibleDirections[0];
+      const terminalStopId = String(only.pattern[only.pattern.length - 1] || '').trim();
+      return terminalStopId ? [{ ...only, terminalStopId }] : [];
     }
 
-    // The destination is the public direction key used by the virtual board.
-    // Multiple GTFS patterns may legitimately share that same terminal (for
-    // example, two branches joining before a common destination). Keep all of
-    // them so their static fallback is suppressed together and their realtime
-    // minutes are deduplicated into one visible line/destination row.
-    const terminalIds = new Set(destinationMatches.map(candidate => normalizeStopKey(candidate.terminalStopId)));
-    if (terminalIds.size === 1) return destinationMatches;
+    // Several route patterns can share the same real destination. Keep them
+    // together so realtime suppresses timetable fallback for each matching
+    // line/direction while mergeRoutes combines equivalent visible rows.
+    // Prefer a true GTFS direction terminal when the same stop name also
+    // occurs mid-route in another pattern (a common case with parallel or
+    // looping directions). Only fall back to intermediate-stop terminals
+    // when no full-pattern terminal matches ЦГМ's destination label.
+    const fullTerminalMatches = destinationMatches.filter(candidate => candidate.fullTerminalMatch);
+    const terminalCandidates = fullTerminalMatches.length ? fullTerminalMatches : destinationMatches;
 
-    // If two different physical terminals share an OSM/GTFS text alias, use
-    // the full route_name origin to disambiguate them when possible.
-    const originMatches = destinationMatches.filter(candidate => candidate.originMatch);
+    const uniqueMatches = new Map();
+    for (const candidate of terminalCandidates) {
+      const key = `${candidate.routeId}|${candidate.directionKey}|${normalizeStopKey(candidate.terminalStopId)}`;
+      const existing = uniqueMatches.get(key);
+      if (!existing || (!existing.originMatch && candidate.originMatch)) {
+        uniqueMatches.set(key, candidate);
+      }
+    }
+    const matches = [...uniqueMatches.values()];
+    const terminalIds = new Set(matches.map(candidate => normalizeStopKey(candidate.terminalStopId)));
+    if (terminalIds.size === 1) return matches;
+
+    // If the same destination text occurs at multiple physical stops, use the
+    // source route_name origin to disambiguate the partial/full course.
+    const originMatches = matches.filter(candidate => candidate.originMatch);
     const originTerminalIds = new Set(originMatches.map(candidate => normalizeStopKey(candidate.terminalStopId)));
     if (originMatches.length && originTerminalIds.size === 1) return originMatches;
 
-    // Never guess between different terminal stops when the source label is
+    // Do not guess between different terminal stops if the source label is
     // insufficient to identify one unambiguously.
-    return destinationMatches.length === 1 ? destinationMatches : [];
+    return matches.length === 1 ? matches : [];
   }
 
   function makeRealtimeArrivals(apiRows, selectedStopId, now) {
@@ -438,6 +491,10 @@ function createDataContext(data = {}) {
       if (!resolvedDirections.length) continue;
 
       for (const resolved of resolvedDirections) {
+        // Do not show a course at the stop where that exact full or partial
+        // course terminates. Keep this rule consistent with GTFS fallback.
+        if (stopIdsMatch(resolved.terminalStopId, selectedStopId)) continue;
+
         const destination = getDestinationName(
           resolved.terminalStopId,
           resolved.direction,
