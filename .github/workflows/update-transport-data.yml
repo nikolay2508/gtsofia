@@ -25,9 +25,6 @@ jobs:
       - name: Generate transport data from CGM GTFS with OSM-first stop names
         run: python Scripts/generate_transport_data.py
 
-      - name: Build compact virtual-board timetable index
-        run: python Scripts/generate_virtual_board_data.py
-
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
