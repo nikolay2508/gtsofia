@@ -1,11 +1,22 @@
 const assert = require('node:assert/strict');
-const { createDataContext } = require('../api/virtual-board-service');
+const { createDataContext, normalizeApiLineName } = require('../api/virtual-board-service');
 const { getRouteMetadata } = require('../assets/js/route-metadata');
 const routesData = require('../data/routes.json');
 const directionsData = require('../data/directions.json');
 
 const now = new Date('2026-11-20T08:00:00+02:00');
 const epoch = value => Date.parse(`2026-11-20T${value}+02:00`) / 1000;
+
+
+// CGM returns X-series line names with a Cyrillic Х, while GTFS stores the
+// public route_short_name with a Latin X. They must normalize identically.
+for (const lineNumber of ['9', '10', '43']) {
+  assert.equal(
+    normalizeApiLineName(`X${lineNumber}`),
+    normalizeApiLineName(`Х${lineNumber}`),
+    `Latin X and Cyrillic Х should match for line X${lineNumber}`
+  );
+}
 
 const fixture = {
   routes: [
@@ -355,6 +366,35 @@ assert.ok(
   !bus59AtRegularTerminal.routes.some(route => route.route_id === 'A105' && route.realtime),
   'bus 59 must not be shown as arriving at the regular-course terminal itself'
 );
+
+// Real GTFS regression for X9: GTFS stores the line as Latin X9, while
+// the CGM virtual-table API returns the Cyrillic spelling Х9. Exact route_ext_id
+// and last_stop values must still resolve both GTFS directions.
+const x9DirectionTowardBalan = liveService.buildBoard([{
+  type: 1,
+  name: 'Х9',
+  route_name: 'Ж.К. ЛОЗЕНЕЦ - МЕТРОСТАНЦИЯ АКАД. А. Т.- БАЛАН',
+  route_ext_id: 'A3660',
+  last_stop: 'A2752',
+  details: [{ t: 8 }]
+}], '1345', now);
+const x9BalanRealtime = x9DirectionTowardBalan.routes.find(route => route.route_id === 'A252' && route.realtime);
+assert.ok(x9BalanRealtime, 'CGM line name Х9 must match GTFS route X9 toward metro station Balan');
+assert.equal(x9BalanRealtime.direction_key, 'D2', 'route_ext_id A3660 must resolve X9 direction D2');
+assert.equal(x9BalanRealtime.terminal_stop_id, '2752', 'last_stop A2752 must resolve the Balan terminal');
+
+const x9DirectionTowardLozenets = liveService.buildBoard([{
+  type: 1,
+  name: 'Х9',
+  route_name: 'МЕТРОСТАНЦИЯ АКАД. А. Т.- БАЛАН - Ж.К. ЛОЗЕНЕЦ',
+  route_ext_id: 'A3647',
+  last_stop: 'A0648',
+  details: [{ t: 8 }]
+}], '2752', now);
+const x9LozenetsRealtime = x9DirectionTowardLozenets.routes.find(route => route.route_id === 'A252' && route.realtime);
+assert.ok(x9LozenetsRealtime, 'CGM line name Х9 must match GTFS route X9 toward Lozenets');
+assert.equal(x9LozenetsRealtime.direction_key, 'D1', 'route_ext_id A3647 must resolve X9 direction D1');
+assert.equal(x9LozenetsRealtime.terminal_stop_id, '0648', 'last_stop A0648 must resolve the Lozenets terminal');
 
 // Metro never consumes the surface realtime source, even if a row is passed in.
 const metroBoard = service.buildBoard([{

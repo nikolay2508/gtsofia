@@ -48,14 +48,12 @@ function normalizeDirectionText(value) {
     .trim();
 }
 
-// Match the equivalence rules used by the Android app's Line.equals():
-// hyphens are ignored, Latin TM is equivalent to Cyrillic ТМ, and Latin E is
-// equivalent to Cyrillic Е. A terminal Т is deliberately NOT expanded to ТМ.
+// Normalize mixed-script line numbers from GTFS and ЦГМ: Latin TM/E/X are
+// equivalent to Cyrillic ТМ/Е/Х. Hyphens are ignored; a terminal Т remains
+// distinct from ТМ.
 function normalizeApiLineName(value) {
-  // Match the Android Line.equals() rules: ignore hyphens, unify Latin TM/E
-  // with Cyrillic spellings, but keep a terminal T distinct from TM. The
-  // leading E in refs such as E186 is a legacy display prefix and is omitted
-  // from the public number returned by the virtual-table API.
+  // Also remove the legacy leading E prefix from refs such as E186 before
+  // comparing the public line number returned by the virtual-table API.
   return String(value ?? '')
     .trim()
     .toLocaleUpperCase('bg-BG')
@@ -63,7 +61,8 @@ function normalizeApiLineName(value) {
     .replace(/-/g, '')
     .replace(/^[ЕE](?=\d)/, '')
     .replace(/TM/g, 'ТМ')
-    .replace(/E/g, 'Е');
+    .replace(/E/g, 'Е')
+    .replace(/X/g, 'Х');
 }
 
 function getRouteNamePairs(routeName) {
