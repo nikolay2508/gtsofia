@@ -8,8 +8,8 @@ const { buildStopIndexes, findPreferredStop } = require('../assets/js/stop-utils
 
 const SOFIA_TIME_ZONE = 'Europe/Sofia';
 const MAX_ARRIVALS_PER_LINE = 3;
-const MAX_STATIC_LOOKAHEAD_SECONDS = 24 * 60 * 60;
-const MAX_REALTIME_LOOKAHEAD_SECONDS = 24 * 60 * 60;
+const MAX_STATIC_LOOKAHEAD_SECONDS = 2 * 60 * 60;
+const MAX_REALTIME_LOOKAHEAD_SECONDS = 4 * 60 * 60;
 
 // Values are the line-type IDs returned by ЦГМ's virtual-table endpoint.
 // Match them against GTSofia's already-normalized public transport types, not
