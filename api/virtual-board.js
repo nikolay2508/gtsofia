@@ -187,6 +187,11 @@ async function requestVirtualTable(stopCode) {
       throw new Error('ЦГМ върна отговор, който не е валиден JSON.');
     }
 
+    console.log(
+  '[CGM RAW VIRTUAL TABLE]',
+  JSON.stringify(payload)
+);
+
     return normalizeVirtualTablePayload(payload);
   }
 
