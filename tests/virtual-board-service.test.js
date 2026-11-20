@@ -19,7 +19,7 @@ const fixture = {
   directions: {
     BUS11: {
       D1: {
-        key: 'D1', direction_id: '0', headsign: 'Крайна точка', destination: 'Крайна точка',
+        key: 'D1', direction_id: '0', shape_id: 'BUS11-SHAPE-D1', headsign: 'Крайна точка', destination: 'Крайна точка',
         pattern: ['0100', '0101', '0102'],
         stops: [
           { stop_id: '0100', osm_name: 'Начална спирка' },
@@ -28,7 +28,7 @@ const fixture = {
         ]
       },
       D2: {
-        key: 'D2', direction_id: '1', headsign: 'Обратна крайна', destination: 'Обратна крайна',
+        key: 'D2', direction_id: '1', shape_id: 'BUS11-SHAPE-D2', headsign: 'Обратна крайна', destination: 'Обратна крайна',
         pattern: ['0100', '0103', '0104'],
         stops: [
           { stop_id: '0100', osm_name: 'Начална спирка' },
@@ -37,7 +37,7 @@ const fixture = {
         ]
       },
       D3: {
-        key: 'D3', direction_id: '2', headsign: 'Крайна точка', destination: 'Крайна точка',
+        key: 'D3', direction_id: '2', shape_id: 'BUS11-SHAPE-D3', headsign: 'Крайна точка', destination: 'Крайна точка',
         pattern: ['0105', '0100', '0102'],
         stops: [
           { stop_id: '0105', osm_name: 'Алтернативно начало' },
@@ -182,6 +182,30 @@ assert.ok(
   'the opposite direction should still receive timetable fallback when it has no realtime data'
 );
 
+// Exact CGM identifiers take priority over ambiguous route_name text. This
+// fixture deliberately makes D1 and D2 share the same route-name destination;
+// route_ext_id -> shape_id plus last_stop must still select only D2.
+const identifiedDirectionBoard = service.buildBoard([{
+  type: 1,
+  name: '11',
+  route_name: 'Начало - Крайна точка',
+  route_ext_id: 'BUS11-SHAPE-D2',
+  last_stop: '0104',
+  details: [{ t: 9 }]
+}], '0100', now);
+const identifiedDirection = identifiedDirectionBoard.routes.find(route => route.route_id === 'BUS11' && route.realtime);
+assert.ok(identifiedDirection, 'route_ext_id and last_stop should resolve a direction even when route_name is ambiguous');
+assert.equal(identifiedDirection.direction_key, 'D2', 'route_ext_id should select the matching GTFS shape');
+assert.equal(identifiedDirection.terminal_stop_id, '0104', 'last_stop should identify the actual terminal stop');
+assert.ok(
+  identifiedDirectionBoard.routes.some(route => route.route_id === 'BUS11' && route.direction_key === 'D1' && route.scheduled),
+  'a different direction with the same public destination must retain its own fallback when not identified by the API row'
+);
+assert.ok(
+  !identifiedDirectionBoard.routes.some(route => route.route_id === 'BUS11' && route.direction_key === 'D2' && route.scheduled),
+  'fallback must be suppressed only for the exact direction identified by route_ext_id'
+);
+
 // No realtime data: preserve the old timetable fallback, including the
 // short-turn terminal inferred from the last populated stop time.
 const fallbackBoard = service.buildBoard([], '0100', now);
@@ -284,6 +308,53 @@ for (const routeId of ['TB35', 'TB39', 'TB36', 'TB24', 'TB46', 'TB43', 'TB41']) 
     `${metadata.number} should resolve realtime as a bus even though its raw GTFS route_type is 11`
   );
 }
+
+// Real GTFS regression for route 59: CGM's route_ext_id A3461 maps to
+// direction D3 (regular course, terminal 0361), while A4086 maps to D2
+// (depot-bound course, terminal 0813). The shared route_name must not merge
+// these directions or cause the realtime row to be dropped.
+const bus59RealtimeRow = {
+  type: 1,
+  name: '59',
+  route_name: 'С. МЪРЧАЕВО-ТОЛУМСКА МАХАЛА - МЕТРОСТАНЦИЯ МИЗИЯ',
+  route_ext_id: 'A3461',
+  last_stop: 'A0361',
+  details: [{ t: 11 }]
+};
+const bus59Board = liveService.buildBoard([bus59RealtimeRow], '1566', now);
+const bus59Realtime = bus59Board.routes.find(route => route.route_id === 'A105' && route.realtime);
+assert.ok(bus59Realtime, 'bus 59 regular course should resolve from the CGM route identifiers');
+assert.equal(bus59Realtime.direction_key, 'D3', 'A3461 must resolve to the regular-course GTFS direction D3');
+assert.equal(bus59Realtime.terminal_stop_id, '0361', 'A0361 must resolve to the physical regular-course terminal');
+assert.equal(bus59Realtime.destination, 'пл. Мизия', 'bus 59 destination must retain the OSM terminal name');
+assert.ok(
+  !bus59Board.routes.some(route => route.route_id === 'A105' && route.direction_key === 'D3' && route.scheduled),
+  'the exact D3 fallback must be suppressed once CGM realtime has matched it'
+);
+
+const bus59DepotBoard = liveService.buildBoard([{
+  ...bus59RealtimeRow,
+  route_ext_id: 'A4086',
+  last_stop: 'A0813'
+}], '1566', now);
+const bus59DepotRealtime = bus59DepotBoard.routes.find(route => route.route_id === 'A105' && route.realtime);
+assert.ok(bus59DepotRealtime, 'bus 59 depot-bound course should also resolve from its own CGM identifiers');
+assert.equal(bus59DepotRealtime.direction_key, 'D2', 'A4086 must resolve to the depot-bound GTFS direction D2');
+assert.equal(bus59DepotRealtime.terminal_stop_id, '0813', 'A0813 must resolve to the depot-side terminal');
+assert.ok(
+  bus59DepotBoard.routes.some(route => route.route_id === 'A105' && route.direction_key === 'D3' && route.scheduled),
+  'the regular-course fallback must remain when only the depot-bound course has realtime'
+);
+assert.ok(
+  !bus59DepotBoard.routes.some(route => route.route_id === 'A105' && route.direction_key === 'D2' && route.scheduled),
+  'the depot-bound fallback must be suppressed only when its exact shape has realtime'
+);
+
+const bus59AtRegularTerminal = liveService.buildBoard([bus59RealtimeRow], '0361', now);
+assert.ok(
+  !bus59AtRegularTerminal.routes.some(route => route.route_id === 'A105' && route.realtime),
+  'bus 59 must not be shown as arriving at the regular-course terminal itself'
+);
 
 // Metro never consumes the surface realtime source, even if a row is passed in.
 const metroBoard = service.buildBoard([{

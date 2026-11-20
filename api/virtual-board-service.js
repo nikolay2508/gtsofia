@@ -338,11 +338,12 @@ function createDataContext(data = {}) {
     const displayType = API_TYPE_TO_DISPLAY_TYPES[apiType];
     const lineName = normalizeApiLineName(apiRow?.name);
     const routeNamePairs = getRouteNamePairs(apiRow?.route_name);
+    const apiShapeId = String(apiRow?.route_ext_id ?? '').trim().toLocaleUpperCase('en-US');
+    const apiLastStopId = String(apiRow?.last_stop ?? '').trim();
     if (!displayType || !lineName) return [];
 
     const routeCandidates = routesByApiLine.get(`${displayType}|${lineName}`) || [];
     const possibleDirections = [];
-    const destinationMatches = [];
 
     for (const route of routeCandidates) {
       const routeId = String(route?.route_id || '').trim();
@@ -356,73 +357,124 @@ function createDataContext(data = {}) {
         }
         if (!selectedIndexes.length) continue;
 
-        const routeCandidate = {
+        possibleDirections.push({
           route,
           routeId,
           directionKey,
           direction: { key: directionKey, ...direction },
           pattern,
+          selectedIndexes,
+          shapeId: String(direction?.shape_id ?? '').trim().toLocaleUpperCase('en-US'),
           meta: createRouteMetadata(route)
-        };
-        possibleDirections.push(routeCandidate);
-
-        // A ЦГМ route_name can describe a partial course. Its destination may
-        // therefore be any stop at or after the selected stop in the GTFS
-        // direction, not only the last stop of the full route pattern.
-        for (const selectedIndex of selectedIndexes) {
-          for (const pair of routeNamePairs) {
-            const destinationName = normalizeDirectionText(pair.destination);
-            if (!destinationName) continue;
-
-            let originMatch = false;
-            const originName = normalizeDirectionText(pair.origin);
-            if (originName) {
-              for (let originIndex = 0; originIndex <= selectedIndex; originIndex++) {
-                const originAliases = getStopNameAliases(
-                  pattern[originIndex],
-                  direction,
-                  { includeOriginLabels: originIndex === 0 }
-                );
-                if (originAliases.has(originName)) {
-                  originMatch = true;
-                  break;
-                }
-              }
-            }
-
-            for (let terminalIndex = selectedIndex; terminalIndex < pattern.length; terminalIndex++) {
-              const terminalStopId = String(pattern[terminalIndex] || '').trim();
-              if (!terminalStopId) continue;
-
-              const destinationAliases = getStopNameAliases(
-                terminalStopId,
-                direction,
-                { includeDestinationLabels: terminalIndex === pattern.length - 1 }
-              );
-              if (!destinationAliases.has(destinationName)) continue;
-
-              destinationMatches.push({
-                ...routeCandidate,
-                terminalStopId,
-                terminalIndex,
-                fullTerminalMatch: terminalIndex === pattern.length - 1,
-                destinationMatch: true,
-                originMatch
-              });
-            }
-          }
-        }
+        });
       }
     }
 
     if (!possibleDirections.length) return [];
 
+    // ЦГМ provides route_ext_id, which corresponds to the GTFS direction's
+    // shape_id. Prefer this exact identifier over route_name: two variants can
+    // share the same public destination while representing different courses
+    // (for example, a regular terminal and a depot-bound terminal).
+    const shapeMatchedDirections = apiShapeId
+      ? possibleDirections.filter(candidate => candidate.shapeId && candidate.shapeId === apiShapeId)
+      : [];
+    const directionsToResolve = shapeMatchedDirections.length
+      ? shapeMatchedDirections
+      : possibleDirections;
+
+    // last_stop identifies the actual terminal stop for the returned API row.
+    // Resolve it within the selected GTFS direction and only accept a stop at
+    // or after the selected stop. This also identifies partial/depot courses
+    // without inferring their terminal from a shared route_name label.
+    if (apiLastStopId) {
+      const lastStopMatches = [];
+      for (const candidate of directionsToResolve) {
+        for (const selectedIndex of candidate.selectedIndexes) {
+          for (let terminalIndex = selectedIndex; terminalIndex < candidate.pattern.length; terminalIndex++) {
+            const terminalStopId = String(candidate.pattern[terminalIndex] || '').trim();
+            if (!terminalStopId || !stopIdsMatch(terminalStopId, apiLastStopId)) continue;
+
+            lastStopMatches.push({
+              ...candidate,
+              terminalStopId,
+              terminalIndex,
+              fullTerminalMatch: terminalIndex === candidate.pattern.length - 1,
+              destinationMatch: true,
+              originMatch: false
+            });
+          }
+        }
+      }
+
+      if (lastStopMatches.length) {
+        const uniqueLastStopMatches = new Map();
+        for (const candidate of lastStopMatches) {
+          const key = `${candidate.routeId}|${candidate.directionKey}|${normalizeStopKey(candidate.terminalStopId)}`;
+          uniqueLastStopMatches.set(key, candidate);
+        }
+        return [...uniqueLastStopMatches.values()];
+      }
+    }
+
+    const destinationMatches = [];
+    for (const routeCandidate of directionsToResolve) {
+      const { direction, pattern, selectedIndexes } = routeCandidate;
+
+      // A ЦГМ route_name can describe a partial course. Its destination may
+      // therefore be any stop at or after the selected stop in the GTFS
+      // direction, not only the last stop of the full route pattern.
+      for (const selectedIndex of selectedIndexes) {
+        for (const pair of routeNamePairs) {
+          const destinationName = normalizeDirectionText(pair.destination);
+          if (!destinationName) continue;
+
+          let originMatch = false;
+          const originName = normalizeDirectionText(pair.origin);
+          if (originName) {
+            for (let originIndex = 0; originIndex <= selectedIndex; originIndex++) {
+              const originAliases = getStopNameAliases(
+                pattern[originIndex],
+                direction,
+                { includeOriginLabels: originIndex === 0 }
+              );
+              if (originAliases.has(originName)) {
+                originMatch = true;
+                break;
+              }
+            }
+          }
+
+          for (let terminalIndex = selectedIndex; terminalIndex < pattern.length; terminalIndex++) {
+            const terminalStopId = String(pattern[terminalIndex] || '').trim();
+            if (!terminalStopId) continue;
+
+            const destinationAliases = getStopNameAliases(
+              terminalStopId,
+              direction,
+              { includeDestinationLabels: terminalIndex === pattern.length - 1 }
+            );
+            if (!destinationAliases.has(destinationName)) continue;
+
+            destinationMatches.push({
+              ...routeCandidate,
+              terminalStopId,
+              terminalIndex,
+              fullTerminalMatch: terminalIndex === pattern.length - 1,
+              destinationMatch: true,
+              originMatch
+            });
+          }
+        }
+      }
+    }
+
     // If ЦГМ's destination label is absent or differs from every GTFS/OSM stop
     // alias, keep the former conservative fallback only when the stop + line
     // + transport type identify a single GTFS direction unambiguously.
     if (!destinationMatches.length) {
-      if (possibleDirections.length !== 1) return [];
-      const only = possibleDirections[0];
+      if (directionsToResolve.length !== 1) return [];
+      const only = directionsToResolve[0];
       const terminalStopId = String(only.pattern[only.pattern.length - 1] || '').trim();
       return terminalStopId ? [{ ...only, terminalStopId }] : [];
     }
