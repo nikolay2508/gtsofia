@@ -422,14 +422,15 @@ function renderStops() {
   const stops =
     direction?.stops || [];
 
-  select.innerHTML =
+select.innerHTML =
     stops
-      .map(
-        (stop, index) => `
+      .map((stop, index) => {
+        const stopCode = stop.stop_code || stop.stop_id || "";
+        return `
           <option value="${index}">
-            ${escapeHtml(getScheduleStopDisplayName(stop))}
-          </option>`
-      )
+            ${stopCode ? `[${escapeHtml(stopCode)}] ` : ""}${escapeHtml(getScheduleStopDisplayName(stop))}
+          </option>`;
+      })
       .join("");
 
   select.disabled =
