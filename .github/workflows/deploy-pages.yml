@@ -33,6 +33,7 @@ jobs:
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       pages: write
       id-token: write
@@ -48,6 +49,34 @@ jobs:
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
+
+      # A rerun of this job keeps artifacts from the previous attempt.
+      # Remove them first because deploy-pages requires exactly one artifact
+      # named 'github-pages' for this workflow run.
+      - name: Remove previous Pages artifacts from this run
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              { owner, repo, run_id: context.runId, per_page: 100 }
+            );
+
+            const staleArtifacts = artifacts.filter(
+              artifact => artifact.name === 'github-pages'
+            );
+
+            for (const artifact of staleArtifacts) {
+              core.info(`Deleting stale Pages artifact ${artifact.id}`);
+              await github.rest.actions.deleteArtifact({
+                owner,
+                repo,
+                artifact_id: artifact.id,
+              });
+            }
+
+            core.info(`Removed ${staleArtifacts.length} stale Pages artifact(s).`);
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
