@@ -162,7 +162,7 @@
     return (
       `<span class="schedule-summary-arrow direction-arrow"`
       + ` aria-hidden="true">`
-      + `<i class="bi bi-caret-right-fill" aria-hidden="true"></i>`
+      + `<img src="assets/icons/destinationarrow.svg" alt="">`
       + `</span>`
       + `<strong class="schedule-summary-destination vb-destination">`
       + `${escapeHtml(destination || "—")}`
@@ -235,7 +235,7 @@
       );
 
     const indicator = arrival?.scheduled
-      ? '<i class="bi bi-calendar3 vb-arrival-calendar" aria-hidden="true" title="По разписание"></i>'
+      ? '<img class="vb-arrival-calendar" src="assets/icons/calendar.svg" alt="" aria-hidden="true" title="По разписание">'
       : (showLive
         ? '<span class="vb-arrival-live" aria-hidden="true" title="В реално време"></span>'
         : "");
