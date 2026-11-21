@@ -610,9 +610,14 @@ SCHEDULES PAGE
 }
 
 .direction-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 13px;
-  height: auto;
   flex: 0 0 13px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1;
   opacity: 0.7;
 }
 
@@ -996,11 +1001,11 @@ VIRTUAL BOARDS
   justify-content: center;
 }
 
-.map-location-button img {
-  width: 22px;
-  height: 22px;
+.map-location-button .bi {
   display: block;
-  flex: 0 0 22px;
+  color: #374151;
+  font-size: 21px;
+  line-height: 1;
 }
 
 .map-tool-button:hover {
@@ -1183,11 +1188,15 @@ VIRTUAL BOARDS
 
 .vb-direction-arrow {
   width: 13px;
-  height: auto;
   flex: 0 0 13px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1;
   opacity: .7;
   align-self: center;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .vb-destination {
