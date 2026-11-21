@@ -671,10 +671,11 @@ function renderSummary(courses) {
           selectedScheduleLine
         )}
 
-        <i
-          class="bi bi-caret-right-fill direction-arrow"
-          aria-hidden="true"
-        ></i>
+        <img
+          class="direction-arrow"
+          src="assets/icons/destinationarrow.svg"
+          alt=""
+        />
 
         <strong class="schedule-summary-destination">
           ${escapeHtml(

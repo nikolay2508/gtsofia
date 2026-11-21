@@ -160,8 +160,10 @@
     destination
   ) {
     return (
-      `<i class="bi bi-caret-right-fill direction-arrow"`
-      + ` aria-hidden="true"></i>`
+      `<span class="schedule-summary-arrow direction-arrow"`
+      + ` aria-hidden="true">`
+      + `<img src="assets/icons/destinationarrow.svg" alt="">`
+      + `</span>`
       + `<strong class="schedule-summary-destination vb-destination">`
       + `${escapeHtml(destination || "—")}`
       + `</strong>`
