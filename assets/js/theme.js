@@ -110,11 +110,12 @@
         class="site-settings-toggle"
         id="siteSettingsToggle"
         type="button"
+        aria-label="Отвори настройките"
+        title="Настройки"
         aria-expanded="false"
         aria-controls="siteSettingsPanel"
       >
         <span class="site-settings-toggle-icon" aria-hidden="true">⚙</span>
-        <span>Настройки</span>
       </button>
     `;
 

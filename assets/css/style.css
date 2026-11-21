@@ -1761,29 +1761,40 @@ THEME SETTINGS
 }
 
 .site-settings-toggle {
-  min-height: 48px;
+  width: 50px;
+  height: 50px;
+  min-height: 50px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  padding: 0 17px;
+  padding: 0;
   border: 1px solid #d1d5db;
-  border-radius: 999px;
+  border-radius: 50%;
   background: rgba(255, 255, 255, .96);
   color: #111827;
   box-shadow: 0 8px 28px rgba(15, 23, 42, .18);
   font: inherit;
-  font-size: 14px;
-  font-weight: 700;
   cursor: pointer;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  transition: transform .18s ease, box-shadow .18s ease, background .2s ease;
+  transition: transform .18s ease, box-shadow .18s ease, background .2s ease, border-color .2s ease;
 }
 
 .site-settings-toggle:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 11px 32px rgba(15, 23, 42, .22);
+  transform: scale(1.06);
+  border-color: #9ca3af;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .22);
+}
+
+.site-settings-toggle-icon {
+  display: inline-block;
+  font-size: 21px;
+  line-height: 1;
+  transition: transform .22s ease;
+}
+
+.site-settings-toggle:hover .site-settings-toggle-icon {
+  transform: rotate(24deg);
 }
 
 .site-settings-toggle:focus-visible,
@@ -1791,12 +1802,6 @@ THEME SETTINGS
 .site-theme-option:focus-visible {
   outline: 3px solid #60a5fa;
   outline-offset: 3px;
-}
-
-.site-settings-toggle-icon {
-  display: inline-block;
-  font-size: 19px;
-  line-height: 1;
 }
 
 .site-settings-panel {
@@ -2223,7 +2228,8 @@ html[data-theme="dark"] .site-theme-option.is-selected {
   }
 
   .site-settings-toggle {
-    min-height: 45px;
-    padding: 0 14px;
+    width: 46px;
+    height: 46px;
+    min-height: 46px;
   }
 }
