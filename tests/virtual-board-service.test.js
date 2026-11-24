@@ -18,6 +18,15 @@ for (const lineNumber of ['9', '10', '43']) {
   );
 }
 
+// CGM returns the University lines with Latin Y, while GTFS uses Cyrillic У.
+for (const lineNumber of ['1', '2']) {
+  assert.equal(
+    normalizeApiLineName(`Y${lineNumber}`),
+    normalizeApiLineName(`У${lineNumber}`),
+    `Latin Y and Cyrillic У should match for line У${lineNumber}`
+  );
+}
+
 const fixture = {
   routes: [
     { route_id: 'BUS11', route_short_name: '11', route_type: '3', route_color: 'BE1E2D', route_text_color: 'FFFFFF' },
