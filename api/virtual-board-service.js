@@ -63,6 +63,7 @@ function normalizeApiLineName(value) {
     .replace(/TM/g, 'ТМ')
     .replace(/E/g, 'Е')
     .replace(/X/g, 'Х');
+    .replace(/Y/g, 'У');
 }
 
 function getRouteNamePairs(routeName) {
