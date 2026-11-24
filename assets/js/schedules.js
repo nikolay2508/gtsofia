@@ -519,21 +519,16 @@ function getStopTime(
 
 
 /*
- * Проверява дали даден курс е частичен.
- *
- * Частичният курс има поне едно липсващо
- * време след последното реално време.
+ * Намира първата и последната спирка с реално време
+ * в конкретния курс.
  */
-function isPartialCourse(course) {
+function getCourseTimeBounds(course) {
   const times =
     Array.isArray(course?.times)
       ? course.times
       : [];
 
-  if (!times.length) {
-    return false;
-  }
-
+  let firstRealIndex = -1;
   let lastRealIndex = -1;
 
   for (
@@ -544,60 +539,82 @@ function isPartialCourse(course) {
     if (
       times[index] !== null &&
       times[index] !== undefined &&
-      String(
-        times[index]
-      ).trim() !== ""
+      String(times[index]).trim() !== ""
     ) {
+      if (firstRealIndex < 0) {
+        firstRealIndex = index;
+      }
+
       lastRealIndex = index;
     }
   }
 
-  if (lastRealIndex < 0) {
-    return false;
-  }
-
-  for (
-    let index =
-      lastRealIndex + 1;
-    index < times.length;
-    index++
-  ) {
-    if (
-      times[index] === null ||
-      times[index] === undefined ||
-      String(
-        times[index]
-      ).trim() === ""
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return {
+    times,
+    firstRealIndex,
+    lastRealIndex
+  };
 }
 
 
 /*
- * Частичните курсове са с:
- *   background: #dc3545
- *   color: white
+ * Частичният курс започва от редовната начална спирка,
+ * но приключва преди редовната крайна спирка.
  */
-function getCourseMinuteStyle(
-  course
-) {
-  if (
-    !isPartialCourse(course)
-  ) {
-    return "";
-  }
+function isPartialCourse(course) {
+  const {
+    times,
+    lastRealIndex
+  } = getCourseTimeBounds(course);
 
-  return `
-    background:#dc3545;
-    color:#ffffff;
-    border-color:#dc3545;
-  `;
+  return (
+    lastRealIndex >= 0 &&
+    lastRealIndex < times.length - 1
+  );
 }
 
+
+/*
+ * Курсът "от депо" се включва от междинна спирка
+ * и продължава до редовната крайна спирка.
+ */
+function isDepotStartCourse(course) {
+  const {
+    times,
+    firstRealIndex,
+    lastRealIndex
+  } = getCourseTimeBounds(course);
+
+  return (
+    firstRealIndex > 0 &&
+    lastRealIndex === times.length - 1
+  );
+}
+
+
+/*
+ * Частичните курсове "за депо" са червени.
+ * Курсовете "от депо" са жълти.
+ */
+function getCourseMinuteStyle(course) {
+  if (isDepotStartCourse(course)) {
+    return `
+      background:#ffc107;
+      color:#212529;
+      border-color:#ffc107;
+    `;
+  }
+
+  if (isPartialCourse(course)) {
+    return `
+      background:#dc3545;
+      color:#ffffff;
+      border-color:#dc3545;
+    `;
+  }
+
+  return "";
+}
 
 function renderSummary(courses) {
   const summary =
