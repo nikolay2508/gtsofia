@@ -62,7 +62,7 @@ function normalizeApiLineName(value) {
     .replace(/^[ЕE](?=\d)/, '')
     .replace(/TM/g, 'ТМ')
     .replace(/E/g, 'Е')
-    .replace(/X/g, 'Х');
+    .replace(/X/g, 'Х')
     .replace(/Y/g, 'У');
 }
 
