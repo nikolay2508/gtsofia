@@ -6,9 +6,8 @@ on:
     branches:
       - main
 
-  # Crucial for Update transport data: a GITHUB_TOKEN push does not create
-  # another push-triggered workflow, but workflow_run is emitted when the
-  # producing workflow finishes.
+  # GITHUB_TOKEN pushes do not start another push-triggered workflow.
+  # Deploy after the transport-data workflow has finished successfully.
   workflow_run:
     workflows:
       - Update transport data
@@ -26,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -34,12 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
+      pages: read
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
@@ -54,6 +48,16 @@ jobs:
         with:
           path: .
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
