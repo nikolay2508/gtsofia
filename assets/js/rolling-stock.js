@@ -9,7 +9,7 @@ const rollingStock = [
     manufacturer: "BMC",
     model: "Belde 220-SLF",
     year: 2005,
-    quantity: 10,
+    quantity: 9,
     image: "https://s1.busphoto.eu/photo/02/39/61/239613.jpg",
     lines: ["26", "28", "187", "188", "190", "285"]
   },
@@ -19,7 +19,7 @@ const rollingStock = [
     manufacturer: "BMC",
     model: "Procity CNG 2017",
     year: 2017,
-    quantity: 59,
+    quantity: 60,
     image: "https://s1.busphoto.eu/photo/05/33/38/533381.jpg",
     lines: ["18", "20", "21", "22", "24", "27", "29", "30", "31", "81", "86", "112", "115", "117", "118", "119"]
   },
@@ -129,7 +129,7 @@ const rollingStock = [
     manufacturer: "Mercedes",
     model: "O345 Conecto G",
     year: 2003,
-    quantity: 27,
+    quantity: 26,
     image: "https://s1.busphoto.eu/photo/07/31/97/731974.jpg",
     lines: ["11", "54", "76", "77", "78", "79", "83", "88", "108", "213", "285", "305", "404", "413"]
   },
@@ -139,7 +139,7 @@ const rollingStock = [
     manufacturer: "Mercedes",
     model: "O530 CapaCity",
     year: 2017,
-    quantity: 11,
+    quantity: 25,
     image: "https://s1.busphoto.eu/photo/02/07/24/207248.jpg",
     lines: ["–"]
   },
@@ -179,7 +179,7 @@ const rollingStock = [
     manufacturer: "MAN",
     model: "Lion's City G CNG 2014",
     year: 2014,
-    quantity: 124,
+    quantity: 126,
     image: "https://s1.busphoto.eu/photo/01/67/69/167691.jpg",
     lines: ["11", "76", "78", "83", "85", "88", "94", "102", "108", "Х10", "111", "120", "204", "213", "280", "294", "304", "305", "310", "404", "413"]
   },
